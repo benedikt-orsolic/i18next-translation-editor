@@ -1,30 +1,202 @@
 #include <gtk/gtk.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct Namespace {
+  char *name;
+  char *fullPath;
+} Namespace;
+
+typedef struct Language {
+  char *lngName;
+  size_t namaespaces_length;
+  struct Namespace **namespaces;
+} Language;
+
+typedef struct Langs {
+  size_t languages_length;
+  struct Language **language;
+} Langs;
 
 GtkFileDialog *file_picker;
 GtkWidget *window;
 GtkWidget *grid;
 GtkWidget *open_file_select_button;
 
-static void print_hello(GtkWidget *widget, gpointer data) {
-  g_print("Hello Wordl\n");
+/**
+ * @param *dir, caller owns, language directory containing json langNamespaces
+ */
+static struct Language *get_locales_lang_struct(GFile *dir) {
+
+  Language *lang = malloc(sizeof(Language));
+  lang->namespaces = malloc(500 * sizeof(Namespace));
+  lang->namaespaces_length = 500;
+  for (int i = 0; i < lang->namaespaces_length; i++) {
+    lang->namespaces[i] = NULL;
+  }
+
+  if (dir == NULL) {
+    // File select cancel
+    return lang;
+  }
+
+  lang->lngName = malloc(strlen(g_file_get_parse_name(dir)));
+  strcpy(lang->lngName, g_file_get_parse_name(dir));
+
+  GFileEnumerator *namespaces =
+      g_file_enumerate_children(dir, NULL, G_FILE_QUERY_INFO_NONE, NULL, NULL);
+
+  if (namespaces == NULL) {
+    return lang;
+  }
+
+  while (1) {
+    GFileInfo *ns = g_file_enumerator_next_file(namespaces, NULL, NULL);
+    if (ns == NULL) {
+      break;
+    }
+
+    const char *name = g_file_info_get_name(ns);
+    GFile *nsFile = g_file_get_child(dir, name);
+    if (nsFile == NULL) {
+      break;
+    }
+
+    if (strstr(name, ".json") == NULL) {
+      continue;
+    }
+
+    char *fullPath = g_file_get_path(nsFile);
+    Namespace *nsStruct = malloc(sizeof(Namespace));
+    nsStruct->name = (char *)malloc(strlen(name));
+    strcpy(nsStruct->name, name);
+    nsStruct->fullPath = (char *)malloc(strlen(fullPath));
+    strcpy(nsStruct->fullPath, fullPath);
+
+    for (int i = 0; i < lang->namaespaces_length; i++) {
+      if (lang->namespaces[i] != NULL) {
+        continue;
+      }
+
+      lang->namespaces[i] = nsStruct;
+      break;
+    }
+
+    g_object_unref(ns);
+  }
+
+  g_object_unref(namespaces);
+  namespaces = NULL;
+
+  return lang;
+  // return NULL;
 }
 
-static void on_file_select(GObject *obj, GAsyncResult *result,
-                           gpointer user_data) {
-  GFile *file = gtk_file_dialog_select_folder_finish(file_picker, result, NULL);
+/**
+ * @param *dir GFile, caller owns, locales root
+ */
+static struct Langs *get_locales_struct(GFile *dir) {
 
-  char *name = g_file_get_parse_name(file);
-  printf("%i", file == NULL);
-  printf("%s", name);
+  Langs *langs;
+  langs = malloc(sizeof(Langs));
+  langs->language = malloc(500 * sizeof(Language));
+  langs->languages_length = 500;
+  for (int i = 0; i < langs->languages_length; i++) {
+    langs->language[i] = NULL;
+  }
 
-  free(file);
-  file = NULL;
+  if (dir == NULL) {
+    // File select cancel
+    return langs;
+  }
+
+  GFileEnumerator *locales =
+      g_file_enumerate_children(dir, NULL, G_FILE_QUERY_INFO_NONE, NULL, NULL);
+
+  if (locales == NULL) {
+    return langs;
+  }
+
+  while (1) {
+    GFileInfo *file = g_file_enumerator_next_file(locales, NULL, NULL);
+
+    if (file == NULL) {
+      break;
+    }
+
+    const char *name = g_file_info_get_name(file);
+    GFile *langDir = g_file_get_child(dir, name);
+    if (langDir == NULL) {
+      continue;
+    }
+
+    Language *lang = get_locales_lang_struct(langDir);
+    for (int i = 0; i < langs->languages_length; i++) {
+      if (langs->language[i] != NULL) {
+        continue;
+      }
+
+      langs->language[i] = lang;
+      break;
+    }
+
+    g_object_unref(file);
+  }
+
+  g_object_unref(locales);
+  locales = NULL;
+  return langs;
+}
+
+static void handle_translation_dir(GObject *obj, GAsyncResult *result,
+                                   gpointer user_data) {
+  GFile *dir = gtk_file_dialog_select_folder_finish(file_picker, result, NULL);
+  Langs *langs = get_locales_struct(dir);
+
+  for (int i = 0; i < langs->languages_length; i++) {
+    if (langs->language[i] == NULL) {
+      break;
+    }
+    for (int j = 0; j < langs->language[i]->namaespaces_length; j++) {
+      Namespace *ns = langs->language[i]->namespaces[j];
+      if (ns == NULL) {
+        break;
+      }
+    }
+  }
+
+  for (int i = 0; i < langs->languages_length; i++) {
+    if (langs->language[i] == NULL) {
+      break;
+    }
+
+    if (!strcmp(langs->language[i]->lngName, "en")) {
+      continue;
+    }
+
+    for (int j = 0; j < langs->language[i]->namaespaces_length; j++) {
+      Namespace *ns = langs->language[i]->namespaces[j];
+      if (ns == NULL) {
+        break;
+      }
+      GtkWidget *nsBtn = gtk_button_new();
+      gtk_button_set_label(GTK_BUTTON(nsBtn), ns->name);
+
+      gtk_grid_attach(GTK_GRID(grid), nsBtn, 0, 1+j,
+                      1, 1);
+    }
+  }
+
+  g_object_unref(dir);
+  dir = NULL;
 };
 
 static void open_file_picker(GtkWidget *widget, gpointer user_data) {
   file_picker = gtk_file_dialog_new();
+  gtk_file_dialog_set_title(file_picker, "Pick directory");
   gtk_file_dialog_select_folder(file_picker, GTK_WINDOW(window), NULL,
-                                on_file_select, user_data);
+                                handle_translation_dir, user_data);
 }
 
 static void activate(GtkApplication *app, gpointer user_data) {
@@ -44,7 +216,6 @@ static void activate(GtkApplication *app, gpointer user_data) {
                   1);
 
   gtk_window_set_default_size(GTK_WINDOW(window), 200, 200);
-  // gtk_widget_show(window);
   gtk_window_present(GTK_WINDOW(window));
 }
 
@@ -55,7 +226,6 @@ int main(int argc, char **argv) {
   app = gtk_application_new("org.gtk.example", G_APPLICATION_DEFAULT_FLAGS);
   g_signal_connect(app, "activate", G_CALLBACK(activate), NULL);
   status = g_application_run(G_APPLICATION(app), argc, argv);
-  printf("%d", status);
   g_object_unref(app);
 
   return status;
