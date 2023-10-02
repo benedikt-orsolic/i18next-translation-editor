@@ -1,3 +1,4 @@
+#include "cJSON.h"
 #include <gtk/gtk.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -23,6 +24,7 @@ GtkFileDialog *file_picker;
 GtkWidget *window;
 GtkWidget *grid;
 GtkWidget *open_file_select_button;
+Langs *langs;
 
 /**
  * @param *dir, caller owns, language directory containing json langNamespaces
@@ -93,6 +95,44 @@ static struct Language *get_locales_lang_struct(GFile *dir) {
   // return NULL;
 }
 
+static void select_namespace(GtkWidget *widget, Namespace *clicked_ns) {
+  for (int i = 0; i < langs->languages_length; i++) {
+    Language *lang = langs->language[i];
+    if (lang == NULL) {
+      return;
+    }
+
+    for (int j = 0; j < lang->namaespaces_length; j++) {
+      Namespace *ns = lang->namespaces[j];
+      if (ns == NULL || strstr(ns->name, clicked_ns->name) == 0) {
+        break;
+      }
+
+      gchar **jsonRaw = malloc(sizeof(gchar *));
+      gsize *jsonRawLength = malloc(sizeof(gsize *));
+      g_file_get_contents(ns->fullPath, jsonRaw, jsonRawLength, NULL);
+      g_print("\n\n%s\n\n", *jsonRaw);
+      g_print("\n\n%s\n\n", ns->fullPath);
+      cJSON *json = cJSON_ParseWithLength(*jsonRaw, *jsonRawLength);
+      g_print("%s\t", json->string);
+      cJSON *root = json->child;
+      cJSON *child = root->child;
+      for (int i = 0; i < cJSON_GetArraySize(json->child); i++) {
+        if (child != NULL) {
+
+          g_print("%s\t", child->string);
+          child = child->next;
+        } else {
+          break;
+        }
+      }
+
+      free(jsonRawLength);
+      free(*jsonRaw);
+      free(jsonRaw);
+    }
+  }
+}
 /**
  * @param *dir GFile, caller owns, locales root
  */
@@ -152,9 +192,13 @@ static struct Langs *get_locales_struct(GFile *dir) {
 static void handle_translation_dir(GObject *obj, GAsyncResult *result,
                                    gpointer user_data) {
   GFile *dir = gtk_file_dialog_select_folder_finish(file_picker, result, NULL);
-  Langs *langs = get_locales_struct(dir);
+  if (dir == NULL) {
+    return;
+  }
 
-  Language *en_lang = NULL;
+  langs = get_locales_struct(dir);
+
+  Language *default_lang = NULL;
   for (int i = 0; i < langs->languages_length; i++) {
     Language *lang = langs->language[i];
     if (lang == NULL) {
@@ -163,99 +207,28 @@ static void handle_translation_dir(GObject *obj, GAsyncResult *result,
     if (strstr(lang->lngName, "/en") == NULL) {
       continue;
     }
-    en_lang = lang;
+    default_lang = lang;
   }
 
-  if (en_lang == NULL) {
+  if (default_lang == NULL) {
     g_print("Did not find default lang.");
     return;
   }
 
-  for (int i = 0; i < en_lang->namaespaces_length; i++) {
-    Namespace *ns = en_lang->namespaces[i];
+  for (int i = 0; i < default_lang->namaespaces_length; i++) {
+    Namespace *ns = default_lang->namespaces[i];
     if (ns == NULL) {
       continue;
     }
 
     GtkWidget *nsButton = gtk_button_new();
     gtk_button_set_label(GTK_BUTTON(nsButton), ns->name);
+    g_signal_connect(GTK_BUTTON(nsButton), "clicked",
+                     G_CALLBACK(select_namespace), ns);
 
     gtk_grid_attach(GTK_GRID(grid), GTK_WIDGET(nsButton), 1, i, 1, 1);
   }
 
-  g_print("%s", en_lang->lngName);
-  return;
-
-  // Add button for each name space for en lang
-  // for (int i = 0; i < langs->languages_length; i++) {
-  //   if (langs->language[i] == NULL) {
-  //     break;
-  //   }
-  //
-  //   if (!strcmp(langs->language[i]->lngName, "en")) {
-  //     continue;
-  //   }
-  //
-  //   for (int j = 0; j < langs->language[i]->namaespaces_length; j++) {
-  //     Namespace *ns = langs->language[i]->namespaces[j];
-  //     if (ns == NULL) {
-  //       break;
-  //     }
-  //     GtkWidget *nsBtn = gtk_button_new();
-  //     gtk_button_set_label(GTK_BUTTON(nsBtn), ns->name);
-  //
-  //     gtk_grid_attach(GTK_GRID(grid), nsBtn, 0, 1 + j, 1, 1);
-  //   }
-  // }
-
-  //  for (int i = 0; i < langs->languages_length; i++) {
-  //    if (langs->language[i] == NULL) {
-  //      break;
-  //    }
-  //
-  //    if (!strcmp(langs->language[i]->lngName, "en")) {
-  //      continue;
-  //    }
-  //
-  //    Namespace *namespaces = langs->language[i]->namespaces[0];
-  //    if (namespaces == NULL) {
-  //      break;
-  //    }
-  //
-  //    for (int j = 0; j < langs->languages_length; j++) {
-  //
-  //      Language *lang = langs->language[j];
-  //      if (lang == NULL) {
-  //        break;
-  //      }
-  //      for (int k = 0; k < lang->namaespaces_length; k++) {
-  //        Namespace *ns = lang->namespaces[k];
-  //
-  //        if (ns == NULL) {
-  //          break;
-  //        }
-  //
-  //        if (!strcmp(ns->name, namespaces->name)) {
-  //          continue;
-  //        }
-  //
-  //        g_print("\n\n%s", ns->fullPath);
-  //
-  //        GFile *file = g_file_new_for_path(ns->fullPath);
-  //        gchar **contents;
-  // gsize *length;
-  //
-  //        g_file_load_contents(file, NULL, contents, length, NULL, NULL);
-  //
-  //        g_print("\n\n\n\n%zu\n\n\n\n", *length);
-  //        g_print("\n\n\n\n%s\n\n\n\n", *contents);
-  //
-  //        g_object_unref(*contents);
-  //        g_object_unref(file);
-  //      }
-  //    }
-  //    break;
-  //  }
   g_object_unref(dir);
   dir = NULL;
 };
