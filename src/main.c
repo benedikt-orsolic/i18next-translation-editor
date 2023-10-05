@@ -7,6 +7,7 @@
 typedef struct Namespace {
   char *name;
   char *fullPath;
+  cJSON *localales_file_data;
 } Namespace;
 
 typedef struct Language {
@@ -24,6 +25,7 @@ GtkFileDialog *file_picker;
 GtkWidget *window;
 GtkGrid *grid;
 GtkWidget *open_file_select_button;
+GtkButton *save_btn;
 Langs *langs;
 
 /**
@@ -75,6 +77,7 @@ static struct Language *get_locales_lang_struct(GFile *dir) {
     strcpy(nsStruct->name, name);
     nsStruct->fullPath = (char *)malloc(strlen(fullPath));
     strcpy(nsStruct->fullPath, fullPath);
+    nsStruct->localales_file_data = NULL;
 
     for (int i = 0; i < lang->namaespaces_length; i++) {
       if (lang->namespaces[i] != NULL) {
@@ -103,22 +106,20 @@ typedef struct SelectedNamespaceKeyParams {
 
 static void select_namespace_key(GtkWidget *widget,
                                  SelectedNamespaceKeyParams *params) {
+  for (int i = 0; i < langs->languages_length; i++) {
+    Language *l = langs->language[i];
+    if (l == NULL) {
+      break;
+    }
 
-  g_print("\n%s\t%s", params->ns->fullPath, params->key->string);
-
-  for(int i = 0; i<langs->languages_length; i++){
-	  Language *l = langs->language[i];
-	  if(l == NULL){
-		  break;
-	  }
-
-	  GtkEntry *input = GTK_ENTRY(gtk_entry_new());
-	  GtkEntryBuffer *buf = gtk_entry_buffer_new(params->key->valuestring, strlen(params->key->valuestring));
-	  g_print("\n%s", l->lngName);
-	  gtk_entry_set_buffer(input, buf);
-	  gtk_grid_attach(grid, GTK_WIDGET(input), 4, i, 1, 1);
+    GtkEntry *input = GTK_ENTRY(gtk_entry_new());
+    GtkEntryBuffer *buf = gtk_entry_buffer_new(
+        params->key->valuestring, strlen(params->key->valuestring));
+    gtk_entry_set_buffer(input, buf);
+    gtk_grid_attach(grid, GTK_WIDGET(input), 4, i, 1, 1);
   }
 }
+
 static void select_namespace(GtkWidget *widget, Namespace *clicked_ns) {
   for (int i = 0; i < langs->languages_length; i++) {
     Language *lang = langs->language[i];
@@ -136,6 +137,7 @@ static void select_namespace(GtkWidget *widget, Namespace *clicked_ns) {
       gsize *jsonRawLength = malloc(sizeof(gsize *));
       g_file_get_contents(ns->fullPath, jsonRaw, jsonRawLength, NULL);
       cJSON *json = cJSON_ParseWithLength(*jsonRaw, *jsonRawLength);
+      ns->localales_file_data = json;
       cJSON *root = json->child;
       cJSON *child = root->child;
       for (int i = 0; i < cJSON_GetArraySize(json->child); i++) {
@@ -143,10 +145,11 @@ static void select_namespace(GtkWidget *widget, Namespace *clicked_ns) {
 
           GtkButton *keyBtn = GTK_BUTTON(gtk_button_new());
           gtk_button_set_label(keyBtn, child->string);
-          SelectedNamespaceKeyParams *selected = malloc(sizeof(SelectedNamespaceKeyParams));
+          SelectedNamespaceKeyParams *selected =
+              malloc(sizeof(SelectedNamespaceKeyParams));
           selected->ns = ns;
           selected->key = child;
-	  selected->full=json;
+          selected->full = json;
           g_signal_connect(keyBtn, "clicked", G_CALLBACK(select_namespace_key),
                            selected);
           gtk_grid_attach(grid, GTK_WIDGET(keyBtn), 3, i, 1, 1);
@@ -262,7 +265,33 @@ static void handle_translation_dir(GObject *obj, GAsyncResult *result,
   g_object_unref(dir);
   dir = NULL;
 };
+static void save_translations_to_file(GtkButton *save_button,
+                                      gpointer user_data) {
+  g_print("\n\n##############################\nSaving");
 
+  for (int i = 0; i < langs->languages_length; i++) {
+    Language *lang = langs->language[i];
+    if (lang == NULL) {
+      break;
+    }
+    for (int j = 0; j < lang->namaespaces_length; j++) {
+      Namespace *ns = lang->namespaces[j];
+      if (ns == NULL) {
+        break;
+      }
+
+      cJSON *ns_json = ns->localales_file_data;
+
+      if (ns_json == NULL) {
+        break;
+      }
+
+      char *json_str = cJSON_Print(ns_json);
+
+      g_print("\n\n%s\n\n", json_str);
+    }
+  }
+}
 static void open_file_picker(GtkWidget *widget, gpointer user_data) {
   file_picker = gtk_file_dialog_new();
   gtk_file_dialog_set_title(file_picker, "Pick directory");
@@ -286,6 +315,12 @@ static void activate(GtkApplication *app, gpointer user_data) {
   gtk_grid_attach(GTK_GRID(grid), GTK_WIDGET(open_file_select_button), 0, 0, 1,
                   1);
 
+  save_btn = GTK_BUTTON(gtk_button_new());
+  gtk_button_set_label(GTK_BUTTON(save_btn), "Save data");
+  g_signal_connect(GTK_BUTTON(save_btn), "clicked",
+                   G_CALLBACK(save_translations_to_file), NULL);
+
+  gtk_grid_attach(GTK_GRID(grid), GTK_WIDGET(save_btn), 0, 1, 1, 1);
   gtk_window_set_default_size(GTK_WINDOW(window), 200, 200);
   gtk_window_present(GTK_WINDOW(window));
 }
