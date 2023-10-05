@@ -297,10 +297,12 @@ static void save_translations_to_file(GtkButton *save_button,
       }
 
       char *json_str = cJSON_Print(ns_json);
+      g_file_set_contents(ns->fullPath, json_str, strlen(json_str), NULL);
 
       g_print("\n\n%s\n\n", json_str);
     }
   }
+  g_print("\n\n##############################\nDone saving");
 }
 static void open_file_picker(GtkWidget *widget, gpointer user_data) {
   file_picker = gtk_file_dialog_new();
