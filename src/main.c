@@ -103,7 +103,15 @@ typedef struct SelectedNamespaceKeyParams {
   Namespace *ns;
   cJSON *full;
 } SelectedNamespaceKeyParams;
+static void on_translation_node_text_change(GtkEditable *entry,
+                                            SelectedNamespaceKeyParams *pt) {
 
+  gchar *currentInput = gtk_editable_get_chars(entry, 0, -1);
+  gchar *old = pt->key->valuestring;
+
+  pt->key->valuestring = currentInput;
+  free(old);
+}
 static void select_namespace_key(GtkWidget *widget,
                                  SelectedNamespaceKeyParams *params) {
   for (int i = 0; i < langs->languages_length; i++) {
@@ -115,6 +123,8 @@ static void select_namespace_key(GtkWidget *widget,
     GtkEntry *input = GTK_ENTRY(gtk_entry_new());
     GtkEntryBuffer *buf = gtk_entry_buffer_new(
         params->key->valuestring, strlen(params->key->valuestring));
+    g_signal_connect(GTK_ENTRY(input), "changed",
+                     G_CALLBACK(on_translation_node_text_change), params);
     gtk_entry_set_buffer(input, buf);
     gtk_grid_attach(grid, GTK_WIDGET(input), 4, i, 1, 1);
   }
