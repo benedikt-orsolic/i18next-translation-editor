@@ -22,7 +22,7 @@ typedef struct Langs {
 
 GtkFileDialog *file_picker;
 GtkWidget *window;
-GtkWidget *grid;
+GtkGrid *grid;
 GtkWidget *open_file_select_button;
 Langs *langs;
 
@@ -95,6 +95,30 @@ static struct Language *get_locales_lang_struct(GFile *dir) {
   // return NULL;
 }
 
+typedef struct SelectedNamespaceKeyParams {
+  cJSON *key;
+  Namespace *ns;
+  cJSON *full;
+} SelectedNamespaceKeyParams;
+
+static void select_namespace_key(GtkWidget *widget,
+                                 SelectedNamespaceKeyParams *params) {
+
+  g_print("\n%s\t%s", params->ns->fullPath, params->key->string);
+
+  for(int i = 0; i<langs->languages_length; i++){
+	  Language *l = langs->language[i];
+	  if(l == NULL){
+		  break;
+	  }
+
+	  GtkEntry *input = GTK_ENTRY(gtk_entry_new());
+	  GtkEntryBuffer *buf = gtk_entry_buffer_new(params->key->valuestring, strlen(params->key->valuestring));
+	  g_print("\n%s", l->lngName);
+	  gtk_entry_set_buffer(input, buf);
+	  gtk_grid_attach(grid, GTK_WIDGET(input), 4, i, 1, 1);
+  }
+}
 static void select_namespace(GtkWidget *widget, Namespace *clicked_ns) {
   for (int i = 0; i < langs->languages_length; i++) {
     Language *lang = langs->language[i];
@@ -111,16 +135,22 @@ static void select_namespace(GtkWidget *widget, Namespace *clicked_ns) {
       gchar **jsonRaw = malloc(sizeof(gchar *));
       gsize *jsonRawLength = malloc(sizeof(gsize *));
       g_file_get_contents(ns->fullPath, jsonRaw, jsonRawLength, NULL);
-      g_print("\n\n%s\n\n", *jsonRaw);
-      g_print("\n\n%s\n\n", ns->fullPath);
       cJSON *json = cJSON_ParseWithLength(*jsonRaw, *jsonRawLength);
-      g_print("%s\t", json->string);
       cJSON *root = json->child;
       cJSON *child = root->child;
       for (int i = 0; i < cJSON_GetArraySize(json->child); i++) {
         if (child != NULL) {
 
-          g_print("%s\t", child->string);
+          GtkButton *keyBtn = GTK_BUTTON(gtk_button_new());
+          gtk_button_set_label(keyBtn, child->string);
+          SelectedNamespaceKeyParams *selected = malloc(sizeof(SelectedNamespaceKeyParams));
+          selected->ns = ns;
+          selected->key = child;
+	  selected->full=json;
+          g_signal_connect(keyBtn, "clicked", G_CALLBACK(select_namespace_key),
+                           selected);
+          gtk_grid_attach(grid, GTK_WIDGET(keyBtn), 3, i, 1, 1);
+
           child = child->next;
         } else {
           break;
@@ -245,7 +275,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
   gtk_window_set_title(GTK_WINDOW(window), "Window");
 
-  grid = gtk_grid_new();
+  grid = GTK_GRID(gtk_grid_new());
   gtk_window_set_child(GTK_WINDOW(window), GTK_WIDGET(grid));
 
   open_file_select_button = gtk_button_new();
